@@ -1,0 +1,30 @@
+{
+    "name": "tribunedesk/cms-protocol",
+    "description": "Tribune Desk CMS API protocol rules for PHP: webhook signature, delivery answer, link back, placeholder links. No HTTP transport, no runtime dependencies.",
+    "type": "library",
+    "license": "MIT",
+    "keywords": ["tribune desk", "cms", "webhook", "standard webhooks", "newsroom"],
+    "homepage": "https://github.com/Tribunedesk/tribunedesk-cms-php",
+    "require": {
+        "php": ">=8.3"
+    },
+    "require-dev": {
+        "phpunit/phpunit": "^9.6"
+    },
+    "autoload": {
+        "psr-4": {
+            "TribuneDesk\\Protocol\\": "src/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "TribuneDesk\\Protocol\\Tests\\": "tests/"
+        }
+    },
+    "config": {
+        "platform": {
+            "php": "8.3"
+        },
+        "sort-packages": true
+    }
+}
