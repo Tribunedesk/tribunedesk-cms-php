@@ -8,6 +8,7 @@ use TribuneDesk\Protocol\ApiErrors;
 use TribuneDesk\Protocol\AuthorOrder;
 use TribuneDesk\Protocol\BacklinkSources;
 use TribuneDesk\Protocol\ChangesFeed;
+use TribuneDesk\Protocol\ContractVersion;
 use TribuneDesk\Protocol\DeliveryAnswer;
 use TribuneDesk\Protocol\DraftRules;
 use TribuneDesk\Protocol\ImageHostRule;
@@ -43,11 +44,44 @@ final class ProtocolUnitsTest extends TestCase
     public function test_delivery_answer(): void
     {
         $draft = DeliveryAnswer::build(12, 'created', 'https://cms.example.com/edit/12', null, null);
-        $this->assertSame(['cms_post_id' => '12', 'post_id' => 12, 'edit_url' => 'https://cms.example.com/edit/12', 'status' => 'created'], $draft);
+        $this->assertSame(['cms_post_id' => '12', 'edit_url' => 'https://cms.example.com/edit/12', 'status' => 'created'], $draft);
         $public = DeliveryAnswer::build(12, 'updated', null, 'https://example.com/a/', ['asset_id' => 'x', 'attachment_id' => 3, 'url' => 'https://example.com/f.jpg']);
         $this->assertSame('https://example.com/a/', $public['permalink']);
         $this->assertSame(3, $public['featured_image']['attachment_id']);
         $this->assertSame(['error' => 'internal_error'], DeliveryAnswer::internal_error());
+    }
+
+    public function test_delivery_answer_accepts_text_id(): void
+    {
+        $a = DeliveryAnswer::build('3f2b8c1e-5d4a-4e6b-9c7d-1a2b3c4d5e6f', 'created', 'https://cms.example.com/e/1', null, null);
+        $this->assertSame('3f2b8c1e-5d4a-4e6b-9c7d-1a2b3c4d5e6f', $a['cms_post_id']);
+        $this->assertArrayNotHasKey('post_id', $a);
+    }
+
+    public function test_delivery_answer_featured_image_with_text_media_id(): void
+    {
+        $a = DeliveryAnswer::build(7, 'created', null, null, ['asset_id' => 'a1', 'url' => 'https://cms.example.com/f.jpg', 'cms_media_id' => 'm-uuid']);
+        $this->assertSame('m-uuid', $a['featured_image']['cms_media_id']);
+        $this->assertSame('a1', $a['featured_image']['asset_id']);
+        $this->assertArrayNotHasKey('attachment_id', $a['featured_image']);
+    }
+
+    public function test_delivery_answer_keeps_numeric_attachment_id(): void
+    {
+        $a = DeliveryAnswer::build(7, 'created', null, null, ['asset_id' => 'a1', 'url' => 'u', 'attachment_id' => 12]);
+        $this->assertSame('12', $a['featured_image']['cms_media_id']);
+        $this->assertSame(12, $a['featured_image']['attachment_id']);
+    }
+
+    public function test_delivery_answer_featured_image_without_media_id_is_refused(): void
+    {
+        $this->expectException(\InvalidArgumentException::class);
+        DeliveryAnswer::build(7, 'created', null, null, ['asset_id' => 'a1', 'url' => 'u']);
+    }
+
+    public function test_contract_version_matches_fixture(): void
+    {
+        $this->assertSame('v' . ContractVersion::TESTED, trim((string) file_get_contents(__DIR__ . '/fixtures/contract/VERSION')));
     }
 
     public function test_author_order(): void

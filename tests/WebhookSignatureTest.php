@@ -73,6 +73,20 @@ final class WebhookSignatureTest extends TestCase
         $this->assertTrue(WebhookSignature::verify(self::SECRET, $headers, self::BODY, self::TS));
     }
 
+    public function test_signature_accepts_psr7_style_headers(): void
+    {
+        // PSR-7 getHeaders() keeps the sent case, Symfony/Laravel headers->all() lower-cases it;
+        // both give every value as a list.
+        $psr7 = [
+            'Webhook-Id'        => [self::ID],
+            'Webhook-Timestamp' => [(string) self::TS],
+            'Webhook-Signature' => [self::SIG],
+        ];
+        $this->assertTrue(WebhookSignature::verify(self::SECRET, $psr7, self::BODY, self::TS));
+        $symfony = array_change_key_case($psr7, CASE_LOWER);
+        $this->assertTrue(WebhookSignature::verify(self::SECRET, $symfony, self::BODY, self::TS));
+    }
+
     public function test_changed_body_is_rejected(): void
     {
         $body = str_replace('test_user', 'test_usex', self::BODY);
