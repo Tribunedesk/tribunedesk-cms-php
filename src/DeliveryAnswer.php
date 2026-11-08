@@ -20,15 +20,21 @@ namespace TribuneDesk\Protocol;
  */
 final class DeliveryAnswer
 {
+    /** The contract's maxLength of cms_post_id and of featured_image.cms_media_id, in characters. */
+    public const MAX_POST_ID  = 128;
+    public const MAX_MEDIA_ID = 255;
+
     /**
      * @param array{asset_id: string, url: string, cms_media_id?: string, attachment_id?: int}|null $featured_image
-     *        The media id as `cms_media_id` (text) or `attachment_id` (number); one of them is required.
+     *        The media id as `cms_media_id` (text) or `attachment_id` (positive number); one of them is required.
      * @return array<string, mixed>
+     * @throws \InvalidArgumentException When featured_image has no media id, or an id is not UTF-8 or is
+     *         longer than the contract allows (cms_post_id: 128 characters, cms_media_id: 255).
      */
     public static function build(int|string $cms_post_id, string $status, ?string $edit_url, ?string $permalink, ?array $featured_image, ?bool $social_queue_exclude = null): array
     {
         $answer = [
-            'cms_post_id' => (string) $cms_post_id,
+            'cms_post_id' => self::checked('cms_post_id', (string) $cms_post_id, self::MAX_POST_ID),
             'edit_url'    => $edit_url,
             'status'      => $status,
         ];
@@ -40,21 +46,38 @@ final class DeliveryAnswer
         }
         if ($featured_image !== null) {
             $attachment_id = $featured_image['attachment_id'] ?? null;
-            $media_id      = (string) ($featured_image['cms_media_id'] ?? '');
-            if ($media_id === '') {
-                $media_id = (string) ($attachment_id ?? '');
+            if (!is_int($attachment_id) || $attachment_id <= 0) {
+                $attachment_id = null;
+            }
+            $media_id = (string) ($featured_image['cms_media_id'] ?? '');
+            if ($media_id === '' && $attachment_id !== null) {
+                $media_id = (string) $attachment_id;
             }
             if ($media_id === '') {
-                throw new \InvalidArgumentException('featured_image needs cms_media_id or attachment_id');
+                throw new \InvalidArgumentException('featured_image needs cms_media_id or a positive attachment_id');
             }
             unset($featured_image['cms_media_id']);
-            if (!is_int($attachment_id) || $attachment_id <= 0) {
+            if ($attachment_id === null) {
                 unset($featured_image['attachment_id']);
             }
-            $answer['featured_image'] = ['cms_media_id' => $media_id] + $featured_image;
+            $answer['featured_image'] = ['cms_media_id' => self::checked('cms_media_id', $media_id, self::MAX_MEDIA_ID)] + $featured_image;
         }
 
         return $answer;
+    }
+
+    /** An id as the contract takes it: valid UTF-8 of at most $max characters. */
+    private static function checked(string $field, string $value, int $max): string
+    {
+        $chars = preg_match_all('/./su', $value);
+        if ($chars === false) {
+            throw new \InvalidArgumentException("$field is not valid UTF-8");
+        }
+        if ($chars > $max) {
+            throw new \InvalidArgumentException("$field is longer than $max characters");
+        }
+
+        return $value;
     }
 
     /** The answer to a delivery that failed on our side: no internals, the text stays in the log. */

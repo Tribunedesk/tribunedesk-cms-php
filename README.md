@@ -81,6 +81,13 @@ try {
 }
 ```
 
+`DeliveryAnswer::build` throws `InvalidArgumentException` for an answer the contract would not
+take: a `featured_image` without a media id (neither `cms_media_id` nor a positive
+`attachment_id`), or an id that is not UTF-8 or is too long (`cms_post_id` over 128 characters,
+`cms_media_id` over 255). In the example above that ends as a `500` and Tribune Desk sends the
+article again, so pass a featured image only when you have its id, or build the answer before
+you save anything.
+
 `WebhookSignature::verify` takes the headers in any of the usual shapes: plain
 (`webhook-id => '…'`), PSR-7 or Symfony (`Webhook-Id => ['…']`) and WordPress
 (`webhook_id => ['…']`).

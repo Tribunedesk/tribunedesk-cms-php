@@ -79,6 +79,42 @@ final class ProtocolUnitsTest extends TestCase
         DeliveryAnswer::build(7, 'created', null, null, ['asset_id' => 'a1', 'url' => 'u']);
     }
 
+    /** @dataProvider non_positive_attachment_ids */
+    public function test_delivery_answer_non_positive_attachment_id_is_no_media_id(int $attachment_id): void
+    {
+        $this->expectException(\InvalidArgumentException::class);
+        DeliveryAnswer::build(7, 'created', null, null, ['asset_id' => 'a1', 'url' => 'u', 'attachment_id' => $attachment_id]);
+    }
+
+    /** @return array<string, array{0: int}> */
+    public function non_positive_attachment_ids(): array
+    {
+        return ['zero' => [0], 'negative' => [-3]];
+    }
+
+    public function test_delivery_answer_cms_post_id_limit_is_128_characters(): void
+    {
+        $this->assertSame(128, strlen(DeliveryAnswer::build(str_repeat('a', 128), 'created', null, null, null)['cms_post_id']));
+        // The contract counts characters, not bytes: 128 two-byte characters still fit.
+        $this->assertSame(str_repeat('ż', 128), DeliveryAnswer::build(str_repeat('ż', 128), 'created', null, null, null)['cms_post_id']);
+        $this->expectException(\InvalidArgumentException::class);
+        DeliveryAnswer::build(str_repeat('a', 129), 'created', null, null, null);
+    }
+
+    public function test_delivery_answer_cms_media_id_limit_is_255_characters(): void
+    {
+        $ok = DeliveryAnswer::build(7, 'created', null, null, ['asset_id' => 'a1', 'url' => 'u', 'cms_media_id' => str_repeat('m', 255)]);
+        $this->assertSame(255, strlen($ok['featured_image']['cms_media_id']));
+        $this->expectException(\InvalidArgumentException::class);
+        DeliveryAnswer::build(7, 'created', null, null, ['asset_id' => 'a1', 'url' => 'u', 'cms_media_id' => str_repeat('m', 256)]);
+    }
+
+    public function test_delivery_answer_refuses_an_id_that_is_not_utf8(): void
+    {
+        $this->expectException(\InvalidArgumentException::class);
+        DeliveryAnswer::build("\xff\xfe", 'created', null, null, null);
+    }
+
     public function test_contract_version_matches_fixture(): void
     {
         $this->assertSame('v' . ContractVersion::TESTED, trim((string) file_get_contents(__DIR__ . '/fixtures/contract/VERSION')));
