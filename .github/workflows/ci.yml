@@ -1,0 +1,50 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  php:
+    name: test (PHP ${{ matrix.php }})
+    runs-on: ubuntu-26.04
+    # 8.3 = the minimum in composer.json, 8.5 = the newest the WordPress plugin is tested on.
+    strategy:
+      fail-fast: false
+      matrix:
+        php: ['8.3', '8.5']
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ matrix.php }}
+          coverage: none
+
+      # The tests read a copy of the contract's signature vectors (no network). This step makes
+      # sure the copy is byte for byte what the contract tag in tests/fixtures/contract/VERSION
+      # published.
+      - name: Signature vectors from the tagged tribunedesk-cms-api
+        run: |
+          curl -fsS "https://raw.githubusercontent.com/Tribunedesk/tribunedesk-cms-api/$(cat tests/fixtures/contract/VERSION)/examples/vectors/webhook-signature.json" \
+            | cmp - tests/fixtures/contract/webhook-signature.json
+
+      # php -l on every file; xargs exits non-zero when any of them fails.
+      - name: Lint PHP
+        run: find . -path ./vendor -prune -o -name '*.php' -print0 | xargs -0 -n1 -P4 php -l
+
+      - name: Composer install
+        run: composer install --no-interaction --no-progress
+
+      - name: PHPUnit
+        run: vendor/bin/phpunit
+
+  # Branch protection asks for one check named "test"; the matrix reports as
+  # "test (PHP x.y)", so this job gathers both versions under that one name.
+  test:
+    needs: php
+    if: always()
+    runs-on: ubuntu-26.04
+    steps:
+      - run: test "${{ needs.php.result }}" = success

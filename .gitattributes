@@ -1,0 +1,3 @@
+# Byte-for-byte copies (the WordPress plugin keeps src/ as a copy; fixtures are compared with the
+# contract tag) must not turn into CRLF on a Windows checkout.
+* text eol=lf
