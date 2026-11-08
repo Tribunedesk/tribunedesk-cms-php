@@ -45,8 +45,12 @@ final class DeliveryAnswer
             }
         }
         if ($featured_image !== null) {
+            // A positive integer, also as text (get_post_meta() and form input give text).
             $attachment_id = $featured_image['attachment_id'] ?? null;
-            if (!is_int($attachment_id) || $attachment_id <= 0) {
+            $attachment_id = is_int($attachment_id) || is_string($attachment_id)
+                ? filter_var($attachment_id, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]])
+                : false;
+            if ($attachment_id === false) {
                 $attachment_id = null;
             }
             $media_id = (string) ($featured_image['cms_media_id'] ?? '');
@@ -59,6 +63,8 @@ final class DeliveryAnswer
             unset($featured_image['cms_media_id']);
             if ($attachment_id === null) {
                 unset($featured_image['attachment_id']);
+            } else {
+                $featured_image['attachment_id'] = $attachment_id;
             }
             $answer['featured_image'] = ['cms_media_id' => self::checked('cms_media_id', $media_id, self::MAX_MEDIA_ID)] + $featured_image;
         }

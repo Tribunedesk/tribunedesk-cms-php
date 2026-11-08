@@ -79,6 +79,14 @@ final class ProtocolUnitsTest extends TestCase
         DeliveryAnswer::build(7, 'created', null, null, ['asset_id' => 'a1', 'url' => 'u']);
     }
 
+    public function test_delivery_answer_takes_a_numeric_string_attachment_id(): void
+    {
+        // get_post_meta() and form input give ids as text.
+        $a = DeliveryAnswer::build(7, 'created', null, null, ['asset_id' => 'a1', 'url' => 'u', 'attachment_id' => '42']);
+        $this->assertSame('42', $a['featured_image']['cms_media_id']);
+        $this->assertSame(42, $a['featured_image']['attachment_id'], 'the contract field is an integer');
+    }
+
     /** @dataProvider non_positive_attachment_ids */
     public function test_delivery_answer_non_positive_attachment_id_is_no_media_id(int $attachment_id): void
     {
