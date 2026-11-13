@@ -195,12 +195,24 @@ final class ProtocolUnitsTest extends TestCase
     {
         $this->assertTrue(ImageHostRule::allows('https://media.example.com/a.png', ['media.example.com']));
         $this->assertFalse(ImageHostRule::allows('https://evil.example.com/a.png', ['media.example.com']));
-        $this->assertTrue(ImageHostRule::allows('https://any.example.com/a.png', null));
-        $this->assertTrue(ImageHostRule::allows('https://any.example.com/a.png', []));
-        $this->assertFalse(ImageHostRule::allows('http://media.example.com/a.png', null));
+        $this->assertFalse(ImageHostRule::allows('http://media.example.com/a.png', ['media.example.com']));
         $this->assertSame(['a.example.com'], ImageHostRule::hosts_from_settings(['image_hosts' => ['A.example.com', 'a.example.com', 3]]));
         $this->assertNull(ImageHostRule::hosts_from_settings(['image_hosts' => []]));
         $this->assertNull(ImageHostRule::hosts_from_settings([]));
+    }
+
+    public function test_image_host_rule_downloads_nothing_without_a_list(): void
+    {
+        // Guide 1, "Where images come from": the list is never empty, so an empty one is an
+        // error and nothing is downloaded; an unknown list allows nothing either.
+        $this->assertFalse(ImageHostRule::allows('https://any.example.com/a.png', null));
+        $this->assertFalse(ImageHostRule::allows('https://any.example.com/a.png', []));
+    }
+
+    public function test_image_host_rule_reads_the_status_answer(): void
+    {
+        $status = ['org_code' => 'x', 'state' => 'disabled', 'image_hosts' => ['Storage.Example.com']];
+        $this->assertSame(['storage.example.com'], ImageHostRule::hosts_from_settings($status));
     }
 
     public function test_placeholder_links(): void
@@ -253,6 +265,21 @@ final class ProtocolUnitsTest extends TestCase
         $this->assertFalse(Resync::answer_is_valid(['resync_id' => 'r1', 'status' => 'ready'], false));
         $this->assertTrue(Resync::answer_is_valid(['resync_id' => 'r1', 'status' => 'ready'], true));
         $this->assertFalse(Resync::answer_is_valid(['status' => 'ready'], true));
+    }
+
+    public function test_resync_cms_to_td_leaves_out_empty_values(): void
+    {
+        // Guide 4, resync step 1: with cms_to_td an empty value clears the field in Tribune Desk.
+        $values = [7 => ['title' => 'T', 'alt' => '', 'caption' => '  ', 'description' => 'D']];
+        $page   = Resync::page('cms_to_td', $values, true, 'r1');
+        $this->assertSame([['field' => 'title', 'value' => 'T'], ['field' => 'description', 'value' => 'D']], $page['items'][0]['fields']);
+    }
+
+    public function test_resync_td_to_cms_sends_empty_values(): void
+    {
+        // With td_to_cms an empty value brings the Tribune Desk value to the CMS.
+        $page = Resync::page('td_to_cms', [7 => ['alt' => '']], true, 'r1');
+        $this->assertSame([['field' => 'alt', 'value' => '']], $page['items'][0]['fields']);
     }
 
     public function test_api_errors(): void
