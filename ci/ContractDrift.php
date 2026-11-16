@@ -135,7 +135,7 @@ final class ContractDrift
                 continue;
             }
             $anchor = $link[2] ?? '';
-            if ($anchor !== '' && !in_array($anchor, self::anchors((string) file_get_contents($file)), true)) {
+            if ($anchor !== '' && !in_array($anchor, self::anchors(self::read($file)), true)) {
                 $missing[] = $link[0];
             }
         }
@@ -230,7 +230,7 @@ final class ContractDrift
      */
     public static function applyPin(string $repo, string $tagRoot, string $latest): void
     {
-        $versionPhp = (string) file_get_contents("$repo/" . self::CONTRACT_VERSION);
+        $versionPhp = self::read("$repo/" . self::CONTRACT_VERSION);
         if (preg_match_all(self::TESTED, $versionPhp) !== 1) {
             throw new RuntimeException(self::CONTRACT_VERSION . " has no single `public const TESTED = '…';`");
         }
@@ -238,7 +238,7 @@ final class ContractDrift
         if (!is_file($vectors)) {
             throw new RuntimeException("$latest has no " . self::TAG_VECTORS);
         }
-        $readme = (string) file_get_contents("$repo/README.md");
+        $readme = self::read("$repo/README.md");
 
         file_put_contents("$repo/" . self::VERSION_FILE, "$latest\n");
         if (!copy($vectors, "$repo/" . self::VECTORS_FILE)) {
@@ -274,7 +274,7 @@ final class ContractDrift
             return 2;
         }
 
-        $pinned = trim((string) file_get_contents("$repo/" . self::VERSION_FILE));
+        $pinned = trim(self::read("$repo/" . self::VERSION_FILE));
         self::versionKey($pinned);
         $lines = preg_split('/\r?\n/', $git(['ls-remote', '--tags', '--refs', self::REPO_URL])) ?: [];
         $latest = self::latestTag($lines);
@@ -299,9 +299,9 @@ final class ContractDrift
         try {
             $source = "$tmp/cms-api";
             $git(self::cloneArgs($latest, $source));
-            $changelog = (string) file_get_contents("$source/CHANGELOG.md");
+            $changelog = self::read("$source/CHANGELOG.md");
             self::applyPin($repo, $source, $latest);
-            $missing = self::missingAnchors((string) file_get_contents("$repo/README.md"), $source);
+            $missing = self::missingAnchors(self::read("$repo/README.md"), $source);
         } finally {
             self::remove($tmp);
         }
@@ -309,6 +309,16 @@ final class ContractDrift
         echo "The pin $pinned is behind $latest; VERSION, vectors, ContractVersion and README links moved.\n";
         self::output(['behind' => 'true', 'rebuild' => 'true', 'pinned' => $pinned, 'tag' => $latest]);
         return 0;
+    }
+
+    /** The file's text; a missing or unreadable file is an error, never an empty string. */
+    private static function read(string $path): string
+    {
+        $text = is_file($path) ? file_get_contents($path) : false;
+        if ($text === false) {
+            throw new RuntimeException("cannot read $path");
+        }
+        return $text;
     }
 
     /** @param array<string, string> $values */

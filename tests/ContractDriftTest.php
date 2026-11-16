@@ -358,6 +358,43 @@ MD;
         $this->assertDirectoryDoesNotExist($calls[1][count($calls[1]) - 1]);
     }
 
+    public function test_run_fails_without_changelog_in_tag(): void
+    {
+        $repo = $this->repoCopy();
+        $before = self::snapshot($repo);
+        $calls = [];
+        $git = self::fakeGit(['v3.4.2-draft'], $calls);
+        $noChangelog = static function (array $args) use ($git): string {
+            $out = $git($args);
+            if (in_array('clone', $args, true)) {
+                unlink($args[count($args) - 1] . '/CHANGELOG.md');
+            }
+            return $out;
+        };
+
+        // On the runner a missing file is only a warning; PHPUnit would turn it into an exception.
+        $level = error_reporting(E_ALL & ~E_WARNING);
+        try {
+            ContractDrift::run(['x', '--body-out', "$repo/body.md"], $repo, $noChangelog);
+            $this->fail('a tag without CHANGELOG.md became a pull request body');
+        } catch (RuntimeException $e) {
+            $this->assertStringContainsString('CHANGELOG.md', $e->getMessage());
+        } finally {
+            error_reporting($level);
+        }
+        $this->assertSame($before, self::snapshot($repo));
+        $this->assertFileDoesNotExist("$repo/body.md");
+    }
+
+    public function test_workflow_passes_the_pin_only_with_an_open_pull_request(): void
+    {
+        $workflow = (string) file_get_contents(__DIR__ . '/../.github/workflows/contract-drift.yml');
+        $this->assertSame(1, preg_match('/id: open\n(.+?)\n\n/s', $workflow, $m));
+        $open = strpos($m[1], 'gh pr list --head contract/latest --state open');
+        $this->assertNotFalse($open, 'a branch left by a closed or never-opened pull request must be rebuilt');
+        $this->assertLessThan(strpos($m[1], 'git fetch'), $open);
+    }
+
     public function test_workflow_commits_no_workflow_file(): void
     {
         $workflow = (string) file_get_contents(__DIR__ . '/../.github/workflows/contract-drift.yml');
