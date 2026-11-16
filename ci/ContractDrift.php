@@ -191,4 +191,152 @@ final class ContractDrift
         }
         return implode("\n", $lines) . "\n";
     }
+
+    /**
+     * Runs git with an argument list (no shell) and returns its stdout.
+     *
+     * @param list<string> $args
+     */
+    public static function git(array $args): string
+    {
+        $process = proc_open(['git', ...$args], [1 => ['pipe', 'w'], 2 => ['pipe', 'w']], $pipes);
+        if (!is_resource($process)) {
+            throw new RuntimeException('cannot start git');
+        }
+        $stdout = (string) stream_get_contents($pipes[1]);
+        $stderr = (string) stream_get_contents($pipes[2]);
+        fclose($pipes[1]);
+        fclose($pipes[2]);
+        $code = proc_close($process);
+        if ($code !== 0) {
+            throw new RuntimeException('git ' . implode(' ', $args) . " failed ($code): " . trim($stderr));
+        }
+        return $stdout;
+    }
+
+    /**
+     * A shallow clone of one tag. autocrlf off: the vectors are compared byte for byte in CI.
+     *
+     * @return list<string>
+     */
+    public static function cloneArgs(string $tag, string $dest): array
+    {
+        return ['-c', 'core.autocrlf=false', 'clone', '--quiet', '--depth', '1', '--branch', $tag, self::REPO_URL, $dest];
+    }
+
+    /**
+     * Moves the pin of `$repo` to `$latest` in all four places, from the tag tree in `$tagRoot`.
+     * Everything is checked before anything is written.
+     */
+    public static function applyPin(string $repo, string $tagRoot, string $latest): void
+    {
+        $versionPhp = (string) file_get_contents("$repo/" . self::CONTRACT_VERSION);
+        if (preg_match_all(self::TESTED, $versionPhp) !== 1) {
+            throw new RuntimeException(self::CONTRACT_VERSION . " has no single `public const TESTED = '…';`");
+        }
+        $vectors = "$tagRoot/" . self::TAG_VECTORS;
+        if (!is_file($vectors)) {
+            throw new RuntimeException("$latest has no " . self::TAG_VECTORS);
+        }
+        $readme = (string) file_get_contents("$repo/README.md");
+
+        file_put_contents("$repo/" . self::VERSION_FILE, "$latest\n");
+        if (!copy($vectors, "$repo/" . self::VECTORS_FILE)) {
+            throw new RuntimeException('cannot copy ' . self::TAG_VECTORS);
+        }
+        $tested = "public const TESTED = '" . substr($latest, 1) . "';";
+        file_put_contents("$repo/" . self::CONTRACT_VERSION, (string) preg_replace(self::TESTED, $tested, $versionPhp));
+        file_put_contents("$repo/README.md", (string) preg_replace(self::README_LINK, '${1}' . $latest . '/', $readme));
+    }
+
+    /**
+     * The CLI run (see the class comment). `$git` takes an argument list and returns stdout.
+     *
+     * @param list<string> $argv
+     * @param callable(list<string>): string $git
+     */
+    public static function run(array $argv, string $repo, callable $git): int
+    {
+        $bodyOut = null;
+        $openPrPin = '';
+        for ($i = 1; $i < count($argv); $i++) {
+            if ($argv[$i] === '--body-out' && isset($argv[$i + 1])) {
+                $bodyOut = $argv[++$i];
+            } elseif ($argv[$i] === '--open-pr-pin' && isset($argv[$i + 1])) {
+                $openPrPin = trim($argv[++$i]);
+            } else {
+                fwrite(STDERR, "unknown argument: {$argv[$i]}\n");
+                return 2;
+            }
+        }
+        if ($bodyOut === null) {
+            fwrite(STDERR, "usage: php ci/contract-drift.php --body-out FILE [--open-pr-pin TAG]\n");
+            return 2;
+        }
+
+        $pinned = trim((string) file_get_contents("$repo/" . self::VERSION_FILE));
+        self::versionKey($pinned);
+        $lines = preg_split('/\r?\n/', $git(['ls-remote', '--tags', '--refs', self::REPO_URL])) ?: [];
+        $latest = self::latestTag($lines);
+        $state = self::compare($pinned, $latest);
+        if ($state === 'current') {
+            echo "The pin $pinned is the newest tag.\n";
+            self::output(['behind' => 'false']);
+            return 0;
+        }
+        if ($state === 'ahead') {
+            fwrite(STDERR, "The pin $pinned is newer than the newest tag $latest.\n");
+            return 1;
+        }
+        if ($openPrPin === $latest) {
+            echo "The pin $pinned is behind $latest; contract/latest already moves it.\n";
+            self::output(['behind' => 'true', 'rebuild' => 'false', 'pinned' => $pinned, 'tag' => $latest]);
+            return 0;
+        }
+
+        $tmp = sys_get_temp_dir() . '/contract-drift-' . bin2hex(random_bytes(6));
+        mkdir($tmp, 0777, true);
+        try {
+            $source = "$tmp/cms-api";
+            $git(self::cloneArgs($latest, $source));
+            $changelog = (string) file_get_contents("$source/CHANGELOG.md");
+            self::applyPin($repo, $source, $latest);
+            $missing = self::missingAnchors((string) file_get_contents("$repo/README.md"), $source);
+        } finally {
+            self::remove($tmp);
+        }
+        file_put_contents($bodyOut, self::prBody($changelog, $pinned, $latest, $missing));
+        echo "The pin $pinned is behind $latest; VERSION, vectors, ContractVersion and README links moved.\n";
+        self::output(['behind' => 'true', 'rebuild' => 'true', 'pinned' => $pinned, 'tag' => $latest]);
+        return 0;
+    }
+
+    /** @param array<string, string> $values */
+    private static function output(array $values): void
+    {
+        $target = getenv('GITHUB_OUTPUT');
+        if ($target === false || $target === '') {
+            return;
+        }
+        $text = '';
+        foreach ($values as $key => $value) {
+            $text .= "$key=$value\n";
+        }
+        file_put_contents($target, $text, FILE_APPEND);
+    }
+
+    private static function remove(string $path): void
+    {
+        if (is_dir($path) && !is_link($path)) {
+            foreach (scandir($path) ?: [] as $name) {
+                if ($name !== '.' && $name !== '..') {
+                    self::remove("$path/$name");
+                }
+            }
+            rmdir($path);
+        } elseif (file_exists($path) || is_link($path)) {
+            @chmod($path, 0666);
+            unlink($path);
+        }
+    }
 }
