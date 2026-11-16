@@ -1,0 +1,87 @@
+name: contract-drift
+
+# Spec "kontrakt najpierw" D2b (Tribunedesk/tribunedesk-cms-kit, docs/specs/2026-11-13-...):
+# once a day, compare tests/fixtures/contract/VERSION with the newest tag of
+# Tribunedesk/tribunedesk-cms-api. When the pin is behind, move it (VERSION, the signature
+# vectors, ContractVersion::TESTED, the guide links in README.md) on the branch contract/latest,
+# open or update one pull request, start CI on it, and fail this run: a pin left behind stays red
+# every day. The pull request never merges itself; main lands through /ship, and landing it does
+# not release the library: a vX.Y.Z tag is a separate decision.
+#
+# GITHUB_TOKEN only. It may not push changes under .github/workflows/; the pin lives outside it.
+# A pull request opened with it starts no workflow, so CI is started with `gh workflow run`
+# (workflow_dispatch is the exception GitHub allows). Opening the pull request needs the
+# repository setting "Allow GitHub Actions to create and approve pull requests". The branch is
+# rebuilt only when a newer tag replaces the one it pins: commits pushed onto it survive.
+
+on:
+  schedule:
+    - cron: "30 5 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+  actions: write
+
+concurrency:
+  group: contract-drift
+  cancel-in-progress: false
+
+jobs:
+  drift:
+    runs-on: ubuntu-26.04
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          coverage: none
+
+      - name: The pin on contract/latest, if the branch exists
+        id: open
+        run: |
+          if git fetch --quiet origin contract/latest 2>/dev/null; then
+            echo "pin=$(git show FETCH_HEAD:tests/fixtures/contract/VERSION 2>/dev/null)" >> "$GITHUB_OUTPUT"
+          else
+            echo "pin=" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Compare the pin with the newest tag
+        id: drift
+        env:
+          OPEN_PR_PIN: ${{ steps.open.outputs.pin }}
+        run: php ci/contract-drift.php --body-out "$RUNNER_TEMP/body.md" --open-pr-pin "$OPEN_PR_PIN"
+
+      - name: Push contract/latest, open the pull request, start CI
+        if: steps.drift.outputs.rebuild == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PINNED: ${{ steps.drift.outputs.pinned }}
+          TAG: ${{ steps.drift.outputs.tag }}
+        run: |
+          branch="contract/latest"
+          title="contract: $PINNED → $TAG"
+          git config user.name "tribunedesk-contract-drift"
+          git config user.email "tribunedesk-contract-drift@users.noreply.github.com"
+          git checkout -B "$branch"
+          git add -A tests/fixtures/contract src/ContractVersion.php README.md
+          git commit -q -m "$title"
+          git push --force origin "$branch"
+          open="$(gh pr list --head "$branch" --state open --json number --jq '.[0].number')"
+          if [ -z "$open" ]; then
+            gh pr create --base main --head "$branch" --title "$title" --body-file "$RUNNER_TEMP/body.md"
+          else
+            gh pr edit "$open" --title "$title" --body-file "$RUNNER_TEMP/body.md"
+          fi
+          gh workflow run ci.yml --ref "$branch"
+
+      - name: Stay red while the pin is behind
+        if: steps.drift.outputs.behind == 'true'
+        env:
+          PINNED: ${{ steps.drift.outputs.pinned }}
+          TAG: ${{ steps.drift.outputs.tag }}
+        run: |
+          echo "::error::tests/fixtures/contract/VERSION $PINNED is behind $TAG: land the contract/latest pull request"
+          exit 1

@@ -4,6 +4,9 @@ on:
   push:
     branches: [main]
   pull_request:
+  # contract-drift.yml starts CI on contract/latest with this: a pull request opened with
+  # GITHUB_TOKEN starts no pull_request run.
+  workflow_dispatch:
 
 jobs:
   php:

@@ -357,4 +357,14 @@ MD;
         $this->assertCount(2, $calls);
         $this->assertDirectoryDoesNotExist($calls[1][count($calls[1]) - 1]);
     }
+
+    public function test_workflow_commits_no_workflow_file(): void
+    {
+        $workflow = (string) file_get_contents(__DIR__ . '/../.github/workflows/contract-drift.yml');
+        $this->assertSame(1, preg_match('/^\s*git add (.+)$/m', $workflow, $m));
+        $this->assertStringNotContainsString('.github', $m[1]);
+        foreach (['tests/fixtures/contract', 'src/ContractVersion.php', 'README.md'] as $place) {
+            $this->assertStringContainsString($place, $m[1], "applyPin changes $place, so the workflow must commit it");
+        }
+    }
 }

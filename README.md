@@ -97,7 +97,10 @@ you save anything.
 The library follows semantic versioning on its own. `ContractVersion::TESTED` says which version
 of the CMS API contract a release is tested against; the tests run the signature vectors
 published with that contract tag (`tests/fixtures/contract/`), and CI checks the copy against
-the tag.
+the tag. Once a day `.github/workflows/contract-drift.yml` compares
+`tests/fixtures/contract/VERSION` with the newest contract tag and, when it is behind, opens a
+`contract/latest` pull request that moves the version, the vectors, `ContractVersion::TESTED` and
+the guide links above to that tag; no library release comes out of it on its own.
 
 ## Development
 
