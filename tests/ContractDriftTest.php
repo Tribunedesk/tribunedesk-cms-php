@@ -180,7 +180,8 @@ MD;
             'examples/vectors/webhook-signature.json' => "{\"vectors\": [\"new\"]}\n",
             'CHANGELOG.md' => self::CHANGELOG,
             'README.md' => "# API\n\n## Errors\n",
-            'guide/1-article-delivery.md' => "## Article delivery webhook\n## Verifying the signature\n## Fields of your answer\n## Where images come from\n",
+            'guide/1-article-delivery.md' => "## Article delivery webhook\n## Verifying the signature\n## Fields of your answer\n## Where images come from\n## The HTML body
+",
             'guide/2-link-back.md' => "# Link back\n",
             'guide/3-full-content.md' => "## Internal links\n## The “read more” box\n## SEO, author and language\n",
             'guide/4-media-library.md' => "## The sync cycle\n## Cursors and expiry\n",
