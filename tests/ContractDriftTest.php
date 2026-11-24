@@ -253,7 +253,7 @@ MD;
         $this->assertStringContainsString("public const TESTED = '3.4.2-draft';", (string) file_get_contents("$repo/src/ContractVersion.php"));
         $readme = (string) file_get_contents("$repo/README.md");
         $this->assertSame(0, substr_count($readme, 'blob/v3.4.1-draft/'));
-        $this->assertSame(11, substr_count($readme, 'blob/v3.4.2-draft/'));
+        $this->assertSame(12, substr_count($readme, 'blob/v3.4.2-draft/'));
         $this->assertSame(str_replace('blob/v3.4.1-draft/', 'blob/v3.4.2-draft/', $before), $readme);
     }
 
