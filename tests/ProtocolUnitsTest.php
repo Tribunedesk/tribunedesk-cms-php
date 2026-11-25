@@ -27,11 +27,12 @@ final class ProtocolUnitsTest extends TestCase
     public function test_draft_rules(): void
     {
         $this->assertSame(DraftRules::CREATE, DraftRules::action(null));
-        // 2.2.2: a post nobody published yet (a draft, one waiting for review) takes a new send.
-        foreach (['draft', 'pending'] as $status) {
+        // 2.2.2: a post nobody published yet (a draft, one waiting for review) takes a new send;
+        // 1.3.0 (contract 3.7): so does a scheduled one, it is not public yet.
+        foreach (['draft', 'pending', 'future'] as $status) {
             $this->assertSame(DraftRules::UPDATE, DraftRules::action($status), $status);
         }
-        foreach (['publish', 'future', 'private'] as $status) {
+        foreach (['publish', 'private'] as $status) {
             $this->assertSame(DraftRules::SKIP, DraftRules::action($status), $status);
         }
         $this->assertSame('T', DraftRules::title(['title' => 'T', 'topic' => 'X']));
