@@ -68,6 +68,25 @@ final class TaxonomyTest extends TestCase
         );
     }
 
+    public function test_a_list_with_no_readable_term_leaves_that_taxonomy_alone(): void
+    {
+        // Only a genuine [] clears; a non-empty list that yields nothing must not wipe the terms.
+        $this->assertSame(
+            ['categories' => null, 'tags' => []],
+            Taxonomy::requested('draft', ['categories' => [['foo' => 1], ['name' => ''], 'Sport'], 'tags' => []]),
+        );
+        $this->assertNull(Taxonomy::requested('draft', ['tags' => [['foo' => 1]]]));
+    }
+
+    public function test_a_name_of_only_spaces_is_dropped(): void
+    {
+        $this->assertSame(
+            ['categories' => null, 'tags' => [['cms_term_id' => null, 'name' => 'Kasia']]],
+            Taxonomy::requested(null, ['tags' => [['cms_term_id' => '5', 'name' => "  \t "], ['name' => 'Kasia']]]),
+        );
+        $this->assertNull(Taxonomy::requested(null, ['tags' => [['name' => '   ']]]));
+    }
+
     /**
      * The adapter's lookups: ids 7 and 12 are terms of this taxonomy, id 30 is a term of the
      * other one; the names are found ignoring letter case.

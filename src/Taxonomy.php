@@ -127,6 +127,9 @@ final class Taxonomy
     /**
      * One taxonomy of the field: a list of terms, or null when the key is absent or unreadable.
      *
+     * Only a genuine `[]` clears the taxonomy: a non-empty list in which no term has a name
+     * (blank names included) is unreadable and leaves the post's terms alone.
+     *
      * @return list<array{cms_term_id: ?string, name: string}>|null
      */
     private static function terms(mixed $value): ?array
@@ -137,7 +140,7 @@ final class Taxonomy
         $terms = [];
         foreach ($value as $item) {
             $name = is_array($item) ? ($item['name'] ?? null) : null;
-            if (!is_string($name) || $name === '') {
+            if (!is_string($name) || trim($name) === '') {
                 continue;
             }
             $id = $item['cms_term_id'] ?? null;
@@ -147,6 +150,6 @@ final class Taxonomy
             ];
         }
 
-        return $terms;
+        return $terms === [] && $value !== [] ? null : $terms;
     }
 }
